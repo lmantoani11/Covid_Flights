@@ -1,0 +1,496 @@
+---
+title: "Working Paper: Examining The Effects Of COVID-19 Stimulus Checks on Air Travel"
+author: "Lucas Mantoani"
+date: "2024-03-20"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+### Preview
+This project serves as the Capstone for Harvard's Professional Certificate in Data Science. Project requirements entail sourcing data, conducting two regressions (with one regression being non-linear or non-logistic), and compiling a report summarizing the findings. The objective is to attain a clear understanding of the subjects covered across the nine sections of the Data Science Series.
+
+# Introduction
+In March of 2020, the COVID-19 infectious disease was classified as a national pandemic in the United States. Americans were advised to quarantine, and only essential workers were permitted to continue going to work. As part of the American Government’s response to avoid an economic crisis, three sets of stimulus checks were provided. Labeled the CARES Act, Consolidated Appropriations Act, and the American Rescue Plan Act respectively, these checks were meant to supplement household income and prevent an economic recession. The CARES Act provided \$1,200 per income tax filer and \$500 per child. The second stimulus, the Consolidated Appropriations Act, provided \$600 per income tax filer and \$600 per child. Finally, the American Rescue Plan Act gave \$1,400 per income tax filer and \$1,400 per child. 
+
+Although the CARES Act received bipartisan support, subsequent rounds of stimulus faced challenges in a Republican-led Senate. Proponents argued that sizable stimulus checks could shorten the recession and alleviate economic hardship. Opponents contended that it would be costly and wasteful. A common critique was that the fiscal support disproportionately benefited economically stable households (DeParle, 2021).
+
+This report seeks to investigate whether the stimulus checks influenced air travel patterns. If families did not allocate the stimulus towards essential expenses such as rent, food, or transportation, they might have saved the funds. After prolonged periods of staying at home due to quarantining restrictions, households may have developed a desire to venture beyond their residences. The objective of this report is to assess whether there was any discernible impact on air travel resulting from changes in disposable income.
+
+# Method's and Analysis
+## Data Integration
+The following data was sourced from the Federal Reserve Bank of St. Louis(FRED), the Bureau of Transportation Statistics(BTS), and the Bureau of Labor Statistics(BLS).
+```{r Data_Load, echo=FALSE,warning=FALSE,message=FALSE ,eval = TRUE }
+#Load the necessary libraries
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(readxl)) install.packages("readxl", repos = "http://cran.us.r-project.org")
+if(!require(gridExtra)) install.packages("gridExtra", repos = "http://cran.us.r-project.org")
+if(!require(stargazer)) install.packages("stargazer", repos = "http://cran.us.r-project.org")
+
+if(!require(neuralnet)) install.packages("knn", repos = "http://cran.us.r-project.org")
+if(!require(cforest)) install.packages("cforest", repos = "http://cran.us.r-project.org")
+if(!require(gamloess)) install.packages("gamloess", repos = "http://cran.us.r-project.org")
+
+
+library(tidyverse)
+library(caret)
+library(readxl)
+library(gridExtra)
+library(stargazer)
+#Access the Data. Format Data Types
+Flight_Information <- read_excel("EDX_Final_Dataset.xlsx",
+                                           col_types = c("date", "numeric",
+                                                         "numeric", "numeric",
+                                                         "numeric", "numeric",
+                                                         "numeric", "numeric",
+                                                         "numeric", "numeric",
+                                                         "numeric", "numeric",
+                                                         "numeric", "numeric"))
+```
+The table below describes each variable in the data set.
+```{r Variable Table, echo=FALSE}
+variable_description <- tibble(Variable = c("International_RPM",
+                    "Domestic_RPM",
+                    "System_RPM",
+                    "M1",
+                    "M2",
+                    "Real_Disposable_Income",
+                    "CPI_Stable_Bsakets",
+                    "Unemployment_Rate",
+                    "CPI_Airline_Fares",
+                    "GDP",
+                    "Rent_Prices",
+                    "Food_Price_Index",
+                    "Ave_Gas_Prices"),
+       Description = c("International Revenue Passenger Miles(RPM)",
+                       "Domestic Revenue Passenger Miles(RPM)",
+                       "Total Revenue Passenger Miles(RPM)",
+                       "M1 Money Supply",
+                       "M2 Money Supply",
+                       "Real Disposable Personal Income",
+                       "Consumer Price Index for All Urban Consumers: All Items Less Food and Energy in U.S. City Average",
+                       "Unemployment Rate",
+                       "Airline fares in U.S. city average, all urban consumers, not seasonally adjusted",
+                       "GDP",
+                       "Rent Prices",
+                       "Food Prices",
+                       "Average Gasoline Price"),
+       Units = c("Millions of RPM",
+                 "Millions of RPM",
+                 "Millions of RPM",
+                 "Billions of Dollars, Seasonally Adjusted",
+                 "Billions of Dollars, Not Seasonally Adjusted",
+                 "Trillions of Chained 2017 Dollars, Seasonally Adjusted Annual Rate",
+                 "Index 1982-1984=100, Seasonally Adjusted",
+                 "Percent, Seasonally Adjusted",
+                 "Index 1982-84=100, Not Seasonally Adjusted",
+                 "Billions of Chained 2017 Dollars, Seasonally Adjusted Annual Rat",
+                 "Index 1982-1984=100, Seasonally Adjusted",
+                 "Index Dec 1984=100, Not Seasonally Adjusted",
+                 "Dollars per Gallon, Not Seasonally Adjusted"
+                 ))
+knitr::kable(variable_description)
+```
+The first few rows are displayed below to demonstrate variable storage.
+```{r Data_Head,echo=FALSE}
+#View the first few data rows
+knitr::kable(head(Flight_Information))
+```
+Below are the summary statistics:
+```{r Data_Summary,echo=FALSE}
+#Examine the basic statistics of the data
+summary(Flight_Information)
+```
+The data is mostly stored as a numeric data type with the exception of period being stored as a date. The output below confirms these assumptions.
+```{r Data_Structure, echo=FALSE}
+#Structure of Data
+knitr::kable(str(Flight_Information))
+```
+
+## Data Interpretation
+In this section visualization of the data will give insight about the variables changed overtime through graphical visualization.
+
+The dependent variable Revenue Passenger Miles(RPM) is displayed below showing its fluctuations across time.
+```{r RPM_Graph,echo=FALSE,fig.width= 12}
+# Create Time Series Variables
+Flight_Information$Month <- month(Flight_Information$Period)
+Flight_Information$Year <- year(Flight_Information$Period)
+#Graph Revenue Passenger Miles
+RPM_Graph <- Flight_Information %>% ggplot(aes(x = Period)) +
+  geom_line(aes(y = (International_RPM/1000000), color = "International")) +
+  geom_line(aes(y = (Domestic_RPM/1000000), color = "Domestic")) +
+  geom_line(aes(y = (System_RPM/1000000), color = "System")) +
+  labs(title = "Revenue Passenger Miles Accross Time",x = "Year",
+       y = "Revenue Passenger Miles in Millions", color = "Lines")
+RPM_Graph
+```
+RPM over time highlights a couple of important characteristics. The first insight displayed is the shock effects of demand across the time period. Notably there is a small dip in 2001 from the terrorist attack on 9-11-2001 and there is a major dip from the COVID-19 pandemic. The project analysis will have consider these factors into our regressions to not skew our results.
+
+The second insight that RPMs have seasonal fluctuations that seem consistent across the time period. AA clearer depiction of the variations between high and low RPMs becomes apparent when condensing down to two seasons.
+```{r Seasonal_Graph_Variables Created,echo=FALSE,fig.width= 12}
+# View the seasons of the graph
+Flight_Information %>% filter(Year %in% c(2005:2006)) %>%
+  ggplot(aes(x = Period)) +
+  geom_line(aes(y = (International_RPM/1000000), color = "International")) +
+  geom_line(aes(y = (Domestic_RPM/1000000), color = "Domestic")) +
+  geom_line(aes(y = (System_RPM/1000000), color = "System")) +
+  labs(title = "Two Year Seasonal Graph of Revenue Passenger Miles",x = "Time",
+       y = "Revenue Passenger Miles in Millions", color = "Lines")
+# Create a season dummy variable
+Flight_Information <- Flight_Information %>% mutate(Season = case_when(
+  Month %in% c(12, 1, 2) ~ "Winter",
+  Month %in% c(3, 4, 5) ~ "Spring",
+  Month %in% c(6, 7, 8) ~ "Summer",
+  Month %in% c(9, 10, 11) ~ "Fall"
+))
+
+# Make dummy variables
+dummy_variables <- model.matrix(~ Season, data = Flight_Information)
+Flight_Information <- cbind(Flight_Information, dummy_variables)
+```
+Summer is the peak of travel in a given year with dips when transitioning from fall to winter. International and domestic travel follow similar peaks and valleys.
+
+Real Disposable Income is graphed below:
+```{r RDI_Graph,echo=FALSE,fig.width= 12}
+#Graph Disposable Income
+RDI_Graph <- Flight_Information %>% ggplot(aes(Period,Real_Disposable_Income)) +
+  geom_line()+
+  labs(title = "Average Disposable Income Over Time",x = "Year",
+       y = "Disposable Income")
+RDI_Graph
+```
+The graph is linear with small fluctuations before the year 2020. The huge spikes observable are the stimulus checks that were provided to prevent the economy from collapsing from the global pandemic.These can be observed more closely in the graph below:
+```{r Stimulus_Graph,echo=FALSE,fig.width= 12}
+# Examine Graph and Add Vertical Lines at Stimulus Dates
+RDI_Graph_Stimulus <- Flight_Information %>% filter(Real_Disposable_Income > 15000) %>% ggplot(aes(Period, Real_Disposable_Income)) +
+  geom_line() +
+  geom_vline(aes(xintercept = as.POSIXct(as.Date("2020-03-01")), color = "Stimulus1"), linetype = "dashed") +
+  geom_vline(aes(xintercept = as.POSIXct(as.Date("2020-12-01")), color = "Stimulus2"), linetype = "dashed") +
+  geom_vline(aes(xintercept = as.POSIXct(as.Date("2021-03-01")), color = "Stimulus3"), linetype = "dashed") +
+  labs(title = "Disposable Income Across Time", x = "Period", y = "Disposable Income") +
+  scale_color_manual(values = c("Stimulus1" = "red", "Stimulus2" = "blue", "Stimulus3" = "orange"),
+                     labels = c("CARES Act (Mar 2020)", "Consolidated Appropriations Act (Dec 2020)",
+                                "American Rescue Plan Act (Mar 2021)")) +
+  guides(color = guide_legend(title = "Stimulus")) +
+  guides(color = guide_legend(override.aes = list(linetype = 1)))  
+RDI_Graph_Stimulus
+```
+
+
+The next graphs compares the CPI of flight prices compared to stable goods:
+```{r CPI_Graphs_Comparison, echo=FALSE,fig.width= 12}
+# Graph Fare CPI
+CPI_Airline_Graph <- ggplot(Flight_Information, aes(x = Period, y = CPI_Airline_Fares)) +
+  geom_line(color = "Red") +
+  labs(title = "Airfare CPI", x = "Time",
+       y = "CPI") 
+
+# Graph Stable CPI
+Stable_CPI_Graph <- ggplot(Flight_Information, aes(x = Period, y = CPI_Stable_Baskets)) +
+  geom_line(color = "Blue") +
+  labs(title = "Stable CPI", x = "Time",
+       y = "CPI")
+# Display CPI's next to each other
+grid.arrange(CPI_Airline_Graph, Stable_CPI_Graph, nrow = 1)
+```
+The graphs do not display a consistent relationship over the entire time period. The only period showing correlation is during the pandemic. This behavior can be clarified by analyzing macroeconomic variables. Initially, a decrease in demand led to a dip in prices as US citizens refrained from traveling and remained indoors. The significant spike in prices can be attributed to the surge in the money supply, as depicted below. Gross Domestic Product (GDP) declined as production slowed due to quarantine measures. To sustain economic activity, the government resorted to printing money, distributing it to businesses and citizens to stimulate demand. This led to inflation, explaining the spike in prices, while also facilitating an upward trend in GDP. Both GDP and the Money Supply are depicted in the graphs below.
+```{r GDP_Graph,echo=FALSE,fig.width= 12}
+#Graph GDP
+GDP_Graph <- Flight_Information %>% ggplot(aes(x = Period)) +
+  geom_line(aes(y = GDP, color = 'GDP')) +
+  labs(title = "GDP over the Given Period", x = "Time",
+       y = "Gross Domestic Product", color = "Lines")
+
+# Gaph Money Supply
+Money_Supply_Graph <- Flight_Information %>% ggplot(aes(x = Period)) +
+  geom_line(aes(y = M1, color = 'M1')) +
+  geom_line(aes(y = M2, color = 'M2')) +
+  labs(title = "Money Supply over the Given Period", x = "Time",
+       y = "Money Supply", color = "Lines")
+#Plot both graphs
+grid.arrange(GDP_Graph,Money_Supply_Graph,nrow = 1)
+
+```
+
+The next series of graphs are provided to measure substitute goods of travel. If the prices of your base necessities increase, there is less wealth to spend on vacations and visiting families during holidays.
+
+```{r Substitute_Variables,echo=FALSE,fig.width= 12}
+#Graph Rent Prices
+Rent_Graph <- Flight_Information %>% ggplot(aes(Period,Rent_Prices)) +
+  geom_line() +
+  labs(title = "Rent Prices Across Time",x = "Time","Average Rent Price In The U.S")
+# Graph food prices
+Food_Price_Graph <- Flight_Information %>% 
+  ggplot(aes(Period,Food_Price_Index)) +
+  geom_line() +
+  labs(title = "Food Price Index Across Time",x = "Time", y = "Index" )
+# Graph Gas Prices
+Gas_Price_Graph <- Flight_Information %>%
+  ggplot(aes(Period,Ave_Gas_Prices)) +
+  geom_line()+
+  labs(title = "Gas Price Across Time",x = "Time", y = "Price")
+
+# Display Rent, Food, and Gas prices on the same display 
+grid.arrange(Rent_Graph,Food_Price_Graph,Gas_Price_Graph, nrow = 1)
+```
+Gas prices are the most comparable substitute good, as they also constitute a travel expense. When planning a trip, one can choose between driving or flying to their destination. The other two graphs depict a consistent upward trend over time, indicating increasing prices.
+
+## Modeling
+To determine if the personal stimulus check had an impact on RPMs this project will find if there are statistically significant effects. The first way to tell this is by running a regression model. The equation for this model is given below:
+$$
+Y_i = \beta _0 + \beta _1 + ...+ \beta_n + \epsilon
+$$
+where: - $Y_i$ is the dependent variable, - $\beta_0$ is the intercept
+, - $\beta_1$ is the first independent variable, - $\beta_n$ is the nth independent variable, - $\epsilon$ is the error term.
+
+There are several considerations and assumptions for this model. The first aspect is the seasonal nature of RPMs. The final model  will  hold the seasons constant in order to measure if real disposable income effected RPMs. If the variables show no statistical significance they will be included in the final model to account for the cyclical nature seen visualized in the data. The second aspect of consideration is removing the demand shock data from our model. This project aims to see if there was an increase in RPM after the stimulus checks. Including economic shocks it will skew our equation negative because the huge dip seen in the data. Finally the models will not include the macroeconomic variables to prevent confounding results.
+
+### Regression Model 1
+The first model will only include the outcome variable and the primary input variable. The equation for the base model is given below:
+$$
+Y = \beta _0 + \beta _1 * x_1 + \epsilon
+$$
+where: - $Y_i$ is the predicted outcome Revenue Passenger Miles, - $\beta_0$ is the intercept
+, - $\beta_1$ is the coefficient of the independent variable Real Disposable Income, - $x_1$ is the value of the predictor variable Real Disposable income, - $\epsilon$ is the error term.
+```{r Model_1,echo=FALSE}
+Model_Data <- Flight_Information %>%
+  filter(!(Period >= "2001-09-01" & Period <= "2001-11-01") & 
+           !(Period >= "2020-03-01" & Period <= "2022-03-01")) %>%
+  mutate(International_RPM = International_RPM / 1000000,
+         Domestic_RPM = Domestic_RPM / 1000000,
+         System_RPM = System_RPM / 1000000,
+         Real_Disposable_Income = Real_Disposable_Income / 1000
+         )
+# Run 1st regression
+linear_model_1 <- lm(System_RPM ~ Real_Disposable_Income, data = Model_Data)
+print("Model 1 Coefficients")
+print(linear_model_1$coefficients)
+```
+
+### Regression Model 2
+The second equation will encompass additional variables such as flight prices, rent costs, food costs, and gasoline expenses. Flight prices were incorporated due to the assumption that recreational travel is an elastic good. Elastic goods are those for which consumers are less likely to purchase if the price increases because they are not essential. The following two variables were included because they represent inelastic goods. Inelastic goods are essential items that consumers will continue to purchase regardless of price increases. Rent is included for its role in determining the cost of accommodation in an area. Lastly, gasoline prices are included as they serve as a substitute for flight costs. If driving becomes cheaper than flying, consumers are more likely to opt for driving, considering the opportunity cost. The equation is outlined below: drive then fly consumers will more often drive if it is worth the opportunity cost. This equation is given below:
+$$
+Y = \beta _0 + \beta _1 * x_1 +  \beta_2 * x_2 +...+\beta_5 * x_5 +\epsilon
+$$
+where: - $\beta_2$ through $\beta_5$ are the coefficient of the variables held constant, $x_2$ through $x_5$ are the value of the variables held constant
+```{r Model_2, echo=FALSE}
+# Run 2nd Regression
+linear_model_2 <- lm(System_RPM ~ Real_Disposable_Income +
+                       CPI_Airline_Fares +
+                       Rent_Prices +
+                       Food_Price_Index +
+                       Ave_Gas_Prices, data = Model_Data)
+print("Model 2 Coefficients")
+print(linear_model_2$coefficients)
+```
+
+### Regression Model 3
+The final regression is a time series. This will include the recorded date of the data and the seasonal variables stored as dummy variable 0 or 1. There are only three included seasons because the forth season is the omission of the other 3.
+$$
+Y = \beta _0 + \beta _1 * x_1  +... + \beta_6 * (t) + \beta_7 * x_7+\beta_8 *x_8+\beta_9*x_9 +\epsilon
+$$
+where: - $\beta_6$ is the coefficient for time,-$t$ is the value of time, -$\beta_7$ through $\beta_9$ are the seasonal coefficients, -$x_7$ through $x_9$ are dummy variable values for the season
+```{r Model_3, echo=FALSE}
+# Create 3rd Regression
+linear_model_3 <- lm(System_RPM ~ Real_Disposable_Income +
+                       CPI_Airline_Fares +
+                       Rent_Prices +
+                       Food_Price_Index +
+                       Ave_Gas_Prices +
+                       Period +
+                       SeasonSpring +
+                       SeasonSummer +
+                       SeasonWinter, data = Model_Data)
+print("Model 3 Coefficients")
+print(linear_model_3$coefficients)
+```
+## Machine Learning Predictions
+This project will employ machine learning algorithms to assess the impact on air travel. This project splits the data into a training and testing set with dates preceding 2020 and compares predicted values against actual values to evaluate the influence of COVID stimulus checks. Three distinct models - GAM (Generalized Additive Models), Random Forest, and K-Nearest Neighbors - will be utilized to discern any substantial effects stemming from the stimulus checks. If testing predictions prove accurate while validation predictions significantly underestimate actual results, it suggests that the stimulus checks contributed to an increase in RPMs. Below are three graphs of the validation data and the prediction data.
+```{r Machine_Learning_Models, warning=FALSE,message=FALSE,echo=FALSE,fig.width= 12}
+# Store the Data From The Pandemic
+Holdout_Data <- Model_Data %>% filter(Period >= "2022-03-01" & Period <= "2023-11-01")
+
+# Training Data
+ML_Data <- Model_Data %>% filter(Year %in% c(2000:2020))
+
+# Calculate the mean absolute error
+calculate_MAE <- function(actual, predicted) {
+  absolute_errors <- abs(actual - predicted)
+  mean_absolute_error <- mean(absolute_errors, na.rm = TRUE)
+  return(mean_absolute_error)
+}
+# Create Function For Mean Percentage Error
+MPE <- function(actual, predicted) {
+  percentage_error <- ((actual - predicted) / actual) * 100
+  mean_percentage_error <- mean(percentage_error, na.rm = TRUE)
+  
+  return(mean_percentage_error)
+}
+
+#Creation of Predictive Models 
+# Set seed for reproducibility
+set.seed(129)
+
+# Split the data into training and testing sets
+test_index <- createDataPartition(y = ML_Data$System_RPM, times = 1, p = 0.3, list = FALSE)
+train_set <- ML_Data[-test_index,]
+test_set <- ML_Data[test_index,]
+
+#Store object for simplification
+ML_Model <- System_RPM ~ Real_Disposable_Income + CPI_Airline_Fares + Rent_Prices + Food_Price_Index + Ave_Gas_Prices + Period + SeasonSpring + SeasonSummer + SeasonWinter
+
+#One standard deviation as base for testing
+Standard_Dev_System <- sd(test_set$System_RPM)
+#GamLoess Model
+set.seed(129)
+train_gamLoess <- train(ML_Model, method = "gamLoess", data = train_set)
+gamLoess_preds <- predict(train_gamLoess, test_set)
+GamLoess_Test_MAE <- calculate_MAE(test_set$System_RPM,gamLoess_preds)
+GamLoess_Test_MPE <-MPE(test_set$System_RPM,gamLoess_preds)
+
+
+#Random Forest Model
+set.seed(129)
+train_randomForest <- train(ML_Model, method = "cforest", data = train_set)
+randomForest_preds <- predict(train_randomForest, test_set)
+RandomForest_Test_MAE<-calculate_MAE(test_set$System_RPM,randomForest_preds)
+RandomForest_Test_MPE<- MPE(test_set$System_RPM,randomForest_preds)
+#Knn Model
+set.seed(129)
+train_Knn  <- train(ML_Model, method = "knn", data = train_set)
+Knn_preds <- predict(train_Knn, test_set)
+knn_Test_MAE <-calculate_MAE(test_set$System_RPM,Knn_preds)
+knn_Test_MPE <-MPE(test_set$System_RPM,Knn_preds)
+
+
+#Model Prediction on 2023 Data
+#Model Prediction on 2023 Data
+gamLoess_valid <- predict(train_gamLoess,Holdout_Data)
+gamLoess_Hold_MAE <-calculate_MAE(Holdout_Data$System_RPM,gamLoess_valid)
+gamLoess_Hold_MPE <- MPE(Holdout_Data$System_RPM,gamLoess_valid)
+gamLoess_Graph <- Holdout_Data %>% ggplot(aes(x = Period)) +
+  geom_line(aes(y = System_RPM, color = "Actual")) +
+  geom_line(aes(y = gamLoess_valid, color = "Predicted"))+
+  labs(title = "gamLoess Predition", x = "Time",
+       y = "RPM", color = "Lines")
+
+
+randomForest_valid <- predict(train_randomForest,Holdout_Data)
+randomForest_Hold_MAE <- calculate_MAE(Holdout_Data$System_RPM,gamLoess_valid)
+randomForest_Hold_MPE <- MPE(Holdout_Data$System_RPM,randomForest_valid)
+randomForest_Graph <- Holdout_Data %>% ggplot(aes(x = Period)) +
+  geom_line(aes(y = System_RPM, color = "Actual")) +
+  geom_line(aes(y = randomForest_valid, color = "Predicted"))+
+  labs(title = "Random Forest Predition", x = "Time",
+       y = "RPM", color = "Lines")
+
+Knn_valid <- predict(train_Knn, Holdout_Data)
+knn_Hold_MAE <- calculate_MAE(Holdout_Data$System_RPM,gamLoess_valid)
+knn_Hold_MPE <- MPE(Holdout_Data$System_RPM,Knn_valid)
+Knn_Graph <- Holdout_Data %>% ggplot(aes(x = Period)) +
+  geom_line(aes(y = System_RPM, color = "Actual")) +
+  geom_line(aes(y = Knn_valid, color = "Predicted"))+
+  labs(title = "K Nearest Neighbor Prediction", x = "Time",
+       y = "RPM", color = "Lines")
+
+grid.arrange(gamLoess_Graph,randomForest_Graph,Knn_Graph,ncol = 1)
+
+#Creat Results Tibble
+Test_DF <- tibble(Model = c("GamLoess Test","RandomForest Test","Knn Test",
+                           "GamLoess Validation","RandomForest Validation","Knn Validation"),
+                 MAE = c(GamLoess_Test_MAE,RandomForest_Test_MAE,knn_Test_MAE,
+                         gamLoess_Hold_MAE,randomForest_Hold_MAE,knn_Hold_MAE),
+                 MPE = c(GamLoess_Test_MPE,RandomForest_Test_MPE,knn_Test_MPE,
+                         gamLoess_Hold_MPE,randomForest_Hold_MPE,knn_Test_MPE))
+```
+
+
+
+# Results
+
+The results of the three regression models discussed above are displayed in the table below.
+```{r Regression_Table,echo=FALSE,warning=FALSE}
+#Create the model list
+models_list <- list(linear_model_1, linear_model_2, linear_model_3)
+#Create a list of model names
+model_names <- c("Base", "Full Regression", "Time Series")
+
+#Display the Regression results below:
+regression_table <- stargazer(models_list, 
+          title = "Regression Results", 
+          type = "text", 
+          keep.stat = c("n", "rsq", "adj.rsq"), 
+          column.labels = model_names)
+```
+Real disposable income showed significance in the first and third regressions, with a positive relationship observed. For every unit increase in real disposable income, there was an associated increase of 6.595 million revenue passenger miles. However, the significance of variables in the second and third regressions changed with the inclusion of seasonal variables. In the third regression, seasonal variables, food prices, and gasoline prices were found to be significant. Gas prices exhibited a positive coefficient, indicating that an increase in gas prices led to higher airline travel. Conversely, food prices had a negative coefficient, suggesting that lower food costs corresponded to increased travel. The data included in the third regression explained 85% of the resulting change in revenue passenger miles.
+
+Regarding the machine learning algorithms, the mean average error (MAE) for our testing data was within one standard deviation of the actual result. Upon examining the graphs and table, the results did not align with the hypothesis that stimulus savings increased flight travel. The Mean Percentage Error (MPE) would be expected to have the same magnitude across all three methods. Although the MAE increased from testing to validation, the magnitude of the error was the key factor under examination.
+
+```{r ML_Table_Results,echo=FALSE}
+#One standard deviation as base for testing
+Standard_Dev_System <- sd(test_set$System_RPM)
+Standard_Dev_System %>% knitr::kable(col.names ="Standard Deviation of System RPM")
+#Table of test and validation results
+Test_DF %>% knitr::kable()
+```
+
+# Conclussion
+In conclusion, this report serves as the culmination of the Capstone for Harvard’s Professional Certificate in Data Science, fulfilling project requirements by sourcing data, conducting regressions, and summarizing findings across the nine sections of the Data Science Series. The analysis focused on investigating the impact of COVID-19 stimulus checks on air travel patterns. Through regression models and machine learning algorithms, the study aimed to discern any significant effects stemming from the economic stimuli.
+
+Real disposable income emerged as a significant factor affecting air travel, demonstrating a positive relationship in regression analyses. However, the machine learning analysis did not conclusively support the hypothesis that stimulus savings had a substantial effect on air travel. Furthermore, this report acknowledges the limitations of using aggregate data and suggests that employing a random sample of individuals may provide deeper insights into the trends observed.
+
+Overall, while this study sheds light on the complex interplay between economic stimuli and air travel, further research utilizing more granular data and refined methodologies may yield a more comprehensive understanding of the phenomenon.
+
+# Citations
+
+## Context Review
+
+- Coronavirus disease (COVID-19) pandemic
+   - **Source:** World Health Organization. (2023). Coronavirus disease (COVID-19) pandemic. World Health Organization. [Link](https://www.who.int/europe/emergencies/situations/covid-19). Accessed on 2024-03-12.
+
+- Stimulus Checks Substantially Reduced Hardship, Study Shows (2021, June 2). *The New York Times* by Jason DeParle [Link](https://www.nytimes.com/2021/06/02/us/politics/stimulus-checks-economic-hardship.html). Accessed on 2024-03-13.
+
+- "Trump tells aides he supports second round of stimulus checks, but White House divisions remain" by Jeff Stein, Josh Dawsey, and Erica Werner. *Washington Post*. June 23, 2020. [Link](https://www.washingtonpost.com/business/2020/06/23/trump-stimulus-checks-second-round/).
+
+## Data Sources
+
+### FRED St. Louis FED:
+
+- Consumer Price Index for All Urban Consumers: All Items Less Food and Energy in U.S. City Average (CPILFESL) 
+   - **Source:** U.S. Federal Reserve Bank of St. Louis. (2023). Consumer Price Index for All Urban Consumers: All Items Less Food and Energy in U.S. City Average [CPILFESL]. FRED, Federal Reserve Bank of St. Louis. [Link](https://fred.stlouisfed.org/series/CPILFESL). Accessed on 2024-02-22.
+
+- Consumer Price Index for All Urban Consumers: Food in U.S. City Average
+   - **Source:** U.S. Federal Reserve Bank of St. Louis. (2023). Consumer Price Index for All Urban Consumers: Food in U.S. City Average [CPIUFDSL]. FRED, Federal Reserve Bank of St. Louis. [Link](https://fred.stlouisfed.org/series/CPIUFDSL). Accessed on 2024-02-22.
+
+- Gross Domestic Product (GDP)
+   - **Source:** U.S. Federal Reserve Bank of St. Louis. (2023). Gross Domestic Product [GDP]. FRED, Federal Reserve Bank of St. Louis. [Link](https://fred.stlouisfed.org/series/GDP). Accessed on 2024-02-22.
+
+- M1 (M1SL)
+   - **Source:** U.S. Federal Reserve Bank of St. Louis. (2023). M1 Money Stock [M1SL]. FRED, Federal Reserve Bank of St. Louis. [Link](https://fred.stlouisfed.org/series/M1SL). Accessed on 2024-02-22.
+
+- M2 (M2SL)
+   - **Source:** U.S. Federal Reserve Bank of St. Louis. (2023). M2 Money Stock [M2SL]. FRED, Federal Reserve Bank of St. Louis. [Link](https://fred.stlouisfed.org/series/M2SL). Accessed on 2024-02-22.
+
+- Noncyclical Rate of Unemployment (NROU)
+   - **Source:** U.S. Federal Reserve Bank of St. Louis. (2023). Noncyclical Rate of Unemployment (NROU) [NROU]. FRED, Federal Reserve Bank of St. Louis. [Link](https://fred.stlouisfed.org/series/NROU). Accessed on 2024-02-22.
+
+- Real Disposable Personal Income
+   - **Source:** U.S. Federal Reserve Bank of St. Louis. (2023). Real Disposable Personal Income [DSPIC96]. FRED, Federal Reserve Bank of St. Louis. [Link](https://fred.stlouisfed.org/series/DSPIC96). Accessed on 2024-02-22.
+
+- US Regular All Formulations Gas Price
+   - **Source:** U.S. Federal Reserve Bank of St. Louis. (2023). US Regular All Formulations Gas Price [GASREGW]. FRED, Federal Reserve Bank of St. Louis. [Link](https://fred.stlouisfed.org/series/GASREGW). Accessed on 2024-02-22.
+
+### Bureau of Labor Statistics (BLS):
+
+- Airline fares in U.S. city average, all urban consumers, not seasonally adjusted
+   - **Source:** U.S. Bureau of Labor Statistics. (2023). Airline fares in U.S. city average, all urban consumers, not seasonally adjusted. U.S. Bureau of Labor Statistics. [Link](https://www.bls.gov/cpi/). Accessed on 2024-02-22.
+
+### Bureau of Transportation Statistics:
+
+- U.S. Air Carrier Traffic Statistics through November 2023
+   - **Source:** Bureau of Transportation Statistics. (2023). U.S. Air Carrier Traffic Statistics. Bureau of Transportation Statistics. [Link](https://www.transtats.bts.gov/). Accessed on 2024-02-22.
