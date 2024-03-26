@@ -31,7 +31,6 @@ This report seeks to investigate whether the stimulus checks influenced air trav
 # Method's and Analysis
 ## Data Integration
 The following data was sourced from the Federal Reserve Bank of St. Louis(FRED), the Bureau of Transportation Statistics(BTS), and the Bureau of Labor Statistics(BLS).
-
 ```{r Data_Load, echo=FALSE,warning=FALSE,message=FALSE ,eval = TRUE }
 #Load the necessary libraries
 if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
@@ -39,6 +38,7 @@ if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.
 if(!require(readxl)) install.packages("readxl", repos = "http://cran.us.r-project.org")
 if(!require(gridExtra)) install.packages("gridExtra", repos = "http://cran.us.r-project.org")
 if(!require(stargazer)) install.packages("stargazer", repos = "http://cran.us.r-project.org")
+if(!require(kableExtra)) install.packages("kableExtra", repos = "http://cran.us.r-project.org")
 
 if(!require(neuralnet)) install.packages("knn", repos = "http://cran.us.r-project.org")
 if(!require(cforest)) install.packages("cforest", repos = "http://cran.us.r-project.org")
@@ -50,6 +50,7 @@ library(caret)
 library(readxl)
 library(gridExtra)
 library(stargazer)
+library(kableExtra)
 #Access the Data. Format Data Types
 Flight_Information <- read_excel("EDX_Final_Dataset.xlsx",
                                            col_types = c("date", "numeric",
@@ -108,33 +109,34 @@ variable_description <- tibble(Variable = c("International_RPM",
                  "Index Dec 1984=100, Not Seasonally Adjusted",
                  "Dollars per Gallon, Not Seasonally Adjusted"
                  ))
-knitr::kable(variable_description, format = "latex", booktabs = TRUE, longtable = FALSE)
+knitr::kable(variable_description, format = "latex", booktabs = TRUE, full_width = TRUE, position = "h!",caption = "Variable Desciptions")%>%
+  kable_styling(latex_options="scale_down")
 ```
+
+
 
 The first few rows are displayed below to demonstrate variable storage.
 
 ```{r Data_Head,echo=FALSE}
 #View the first few data rows
-knitr::kable(head(Flight_Information),format = "latex",escape = TRUE,booktabs = TRUE)
+knitr::kable(head(Flight_Information),format = "latex",escape = TRUE,booktabs = TRUE,position = "h!",caption = "Data Storage") %>%
+  kable_styling(latex_options="scale_down")
 ```
+
+
 
 Below are the summary statistics:
 
 ```{r Data_Summary,echo=FALSE}
 #Examine the basic statistics of the data
-summary(Flight_Information)
-```
-The data is mostly stored as a numeric data type with the exception of period being stored as a date. The output below confirms these assumptions.
-
-```{r Data_Structure, echo=FALSE,}
 #Structure of Data
-stargazer(Flight_Information,
+stargazer(as.data.frame(Flight_Information),
           type = "latex",
-          digits = 0,
           header = FALSE,
-          summary = TRUE)
+          summary = TRUE,
+          title = "Summary Statistics")
 ```
-
+\newpage
 ## Data Interpretation
 In this section visualization of the data will give insight about the variables changed overtime through graphical visualization.
 
@@ -155,7 +157,7 @@ RPM_Graph
 ```
 RPM over time highlights a couple of important characteristics. The first insight displayed is the shock effects of demand across the time period. Notably there is a small dip in 2001 from the terrorist attack on 9-11-2001 and there is a major dip from the COVID-19 pandemic. The project analysis will have consider these factors into our regressions to not skew our results.
 
-The second insight that RPMs have seasonal fluctuations that seem consistent across the time period. AA clearer depiction of the variations between high and low RPMs becomes apparent when condensing down to two seasons.
+The second insight that RPMs have seasonal fluctuations that seem consistent across the time period. A clearer depiction of the variations between high and low RPMs becomes apparent when condensing down to two seasons.
 
 ```{r Seasonal_Graph_Variables Created,echo=FALSE,fig.width= 12}
 # View the seasons of the graph
